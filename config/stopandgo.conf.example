@@ -1,0 +1,15 @@
+# Full catalog endpoint exposed by the StopAndGo server.
+api_url=https://your-server.your-tailnet.ts.net/api/files
+
+# Leave blank when the server is reachable only through Tailscale Serve.
+token=
+
+# mpv key name that opens the library.
+key=Ctrl+b
+
+# Catalog request timeout and visible list length.
+timeout=10
+rows=8
+
+# Normally off. The bundled open-library.command overrides this for one launch.
+open_on_start=no

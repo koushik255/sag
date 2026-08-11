@@ -1,0 +1,7 @@
+# Server exports for StopAndGo movies.
+clip_key=5
+screenshot_key=s
+seconds=15
+server_url=http://your-server:8765
+token=
+timeout=30

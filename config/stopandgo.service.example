@@ -1,0 +1,17 @@
+[Unit]
+Description=StopAndGo media server
+After=network-online.target
+
+[Service]
+Type=simple
+User=stopandgo
+Group=stopandgo
+WorkingDirectory=/opt/stopandgo
+ExecStart=/usr/bin/python3 /opt/stopandgo/server/stopandgo_server.py --env-file /etc/stopandgo.env
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

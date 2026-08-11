@@ -1,0 +1,17 @@
+#!/bin/sh
+set -eu
+
+mpv_app="$HOME/Applications/mpv.app"
+if [ ! -d "$mpv_app" ]; then
+    mpv_app="/Applications/mpv.app"
+fi
+
+if [ ! -d "$mpv_app" ]; then
+    /usr/bin/osascript -e 'display alert "mpv is not installed" message "Install mpv.app before opening MPV Library."'
+    exit 1
+fi
+
+exec /usr/bin/open -na "$mpv_app" --args \
+    --idle=yes \
+    --force-window=yes \
+    --script-opts=stopandgo-open_on_start=yes

@@ -1,0 +1,13 @@
+[Unit]
+Description=StopAndGo media server
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/stopandgo
+ExecStart=/usr/bin/python3 %h/stopandgo/server/stopandgo_server.py --env-file %h/stopandgo/.env
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target
