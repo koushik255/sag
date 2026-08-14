@@ -6,6 +6,7 @@ local utils = require("mp.utils")
 
 local opts = {
     api_url = "http://127.0.0.1:8765/api/files",
+    clips_api_url = "",
     token = "",
     key = "Ctrl+b",
     timeout = 10,
@@ -21,6 +22,9 @@ local state = {
     selected = 1,
     error = nil,
     hidden = 0,
+    library = "movies",
+    selections = { movies = 1, clips = 1 },
+    request_id = 0,
 }
 
 local overlay = mp.create_osd_overlay("ass-events")
@@ -40,6 +44,8 @@ local browser_bindings = {
     { "KP_ENTER", "stopandgo-play-keypad" },
     { "ESC", "stopandgo-close" },
     { "r", "stopandgo-refresh" },
+    { "TAB", "stopandgo-library-tab" },
+    { "c", "stopandgo-library-c" },
 }
 
 local function clamp(value, minimum, maximum)
@@ -68,6 +74,9 @@ local function human_duration(seconds)
     local value = math.floor(tonumber(seconds) or 0)
     if value <= 0 then
         return ""
+    end
+    if value < 60 then
+        return string.format("%ds", value)
     end
     local hours = math.floor(value / 3600)
     local minutes = math.floor((value % 3600) / 60)
@@ -116,6 +125,7 @@ end
 
 local function item_metadata(item)
     local parts = {}
+    if item.created and item.created ~= "" then table.insert(parts, item.created) end
     local duration = human_duration(item.duration)
     local resolution = resolution_label(item)
     if duration ~= "" then table.insert(parts, duration) end
@@ -130,23 +140,26 @@ local function draw()
         return
     end
 
+    local tabs = state.library == "movies" and "[movies]   clips" or "movies   [clips]"
     local events = {
         rectangle(120, 82, 1160, 638, "111111", "18"),
-        label(158, 116, 7, mono_font .. "\\fs25\\b1\\1c&HEAEAEA&", "movies"),
+        label(158, 116, 7, mono_font .. "\\fs25\\b1\\1c&HEAEAEA&", tabs),
     }
     if state.loading then
         table.insert(events, label(158, 166, 7, mono_font .. "\\fs19\\1c&H999999&", "scanning..."))
     elseif state.error then
         table.insert(events, label(158, 166, 7, mono_font .. "\\fs19\\1c&H8888DD&", truncate(state.error, 84)))
-        table.insert(events, label(158, 205, 7, mono_font .. "\\fs16\\1c&H888888&", "r retry    esc close"))
+        table.insert(events, label(158, 205, 7, mono_font .. "\\fs16\\1c&H888888&", "tab switch    r retry    esc close"))
     elseif #state.files == 0 then
-        table.insert(events, label(158, 166, 7, mono_font .. "\\fs19\\1c&HAAAAAA&", "no playable files"))
-        table.insert(events, label(158, 205, 7, mono_font .. "\\fs16\\1c&H777777&", "r rescan    esc close"))
+        local empty_text = state.library == "clips" and "no clips yet" or "no playable files"
+        table.insert(events, label(158, 166, 7, mono_font .. "\\fs19\\1c&HAAAAAA&", empty_text))
+        table.insert(events, label(158, 205, 7, mono_font .. "\\fs16\\1c&H777777&", "tab switch    r rescan    esc close"))
     else
         local rows = clamp(tonumber(opts.rows) or 8, 3, 8)
         local first = clamp(state.selected - math.floor(rows / 2), 1, math.max(1, #state.files - rows + 1))
         local last = math.min(#state.files, first + rows - 1)
-        local count_text = string.format("%d files", #state.files)
+        local noun = state.library == "clips" and "clips" or "movies"
+        local count_text = string.format("%d %s", #state.files, noun)
         if state.hidden > 0 then
             count_text = count_text .. string.format("   %d skipped", state.hidden)
         end
@@ -175,7 +188,7 @@ local function draw()
         end
         table.insert(events, rectangle(155, 586, 1125, 588, "303030", "00"))
         table.insert(events, label(158, 610, 4, mono_font .. "\\fs14\\1c&H777777&",
-            "up/down move    enter play    r reload    esc close"))
+            "up/down move    enter play    tab switch    r reload    esc close"))
         table.insert(events, label(1120, 610, 6, mono_font .. "\\fs14\\1c&H666666&",
             string.format("%d/%d", state.selected, #state.files)))
     end
@@ -209,6 +222,8 @@ local function play_selected()
 end
 
 local function refresh()
+    state.request_id = state.request_id + 1
+    local request_id = state.request_id
     state.loading = true
     state.error = nil
     draw()
@@ -226,7 +241,14 @@ local function refresh()
         table.insert(args, "--header")
         table.insert(args, "Authorization: Bearer " .. opts.token)
     end
-    table.insert(args, opts.api_url)
+    local endpoint = opts.api_url
+    if state.library == "clips" then
+        endpoint = opts.clips_api_url
+        if endpoint == "" then
+            endpoint = opts.api_url:gsub("/api/files/?$", "/api/clips")
+        end
+    end
+    table.insert(args, endpoint)
 
     mp.command_native_async({
         name = "subprocess",
@@ -235,7 +257,7 @@ local function refresh()
         capture_stderr = true,
         args = args,
     }, function(success, result, error_message)
-        if not state.visible then
+        if not state.visible or request_id ~= state.request_id then
             return
         end
         state.loading = false
@@ -259,6 +281,15 @@ local function refresh()
     end)
 end
 
+local function switch_library()
+    state.selections[state.library] = state.selected
+    state.library = state.library == "movies" and "clips" or "movies"
+    state.selected = state.selections[state.library] or 1
+    state.files = {}
+    state.hidden = 0
+    refresh()
+end
+
 local function add_browser_bindings()
     mp.add_forced_key_binding("UP", "stopandgo-up", function() move_selection(-1) end, { repeatable = true })
     mp.add_forced_key_binding("DOWN", "stopandgo-down", function() move_selection(1) end, { repeatable = true })
@@ -270,6 +301,8 @@ local function add_browser_bindings()
     mp.add_forced_key_binding("KP_ENTER", "stopandgo-play-keypad", play_selected)
     mp.add_forced_key_binding("ESC", "stopandgo-close", close_browser)
     mp.add_forced_key_binding("r", "stopandgo-refresh", refresh)
+    mp.add_forced_key_binding("TAB", "stopandgo-library-tab", switch_library)
+    mp.add_forced_key_binding("c", "stopandgo-library-c", switch_library)
 end
 
 local function toggle_browser()

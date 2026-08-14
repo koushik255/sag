@@ -258,6 +258,7 @@ class ExportJobs:
         start = max(0.0, end - duration)
         actual_duration = max(0.1, end - start)
         video_filter = "format=yuv420p"
+        temporary = output.with_name(f".{output.name}.{job_id}.partial")
         try:
             stat = source.stat()
             metadata = (
@@ -307,17 +308,24 @@ class ExportJobs:
                     "160k",
                     "-movflags",
                     "+faststart",
-                    str(output),
+                    "-f",
+                    "mp4",
+                    str(temporary),
                 ],
                 capture_output=True,
                 text=True,
                 timeout=300,
             )
-            if completed.returncode != 0 or not output.is_file() or output.stat().st_size == 0:
-                output.unlink(missing_ok=True)
+            if (
+                completed.returncode != 0
+                or not temporary.is_file()
+                or temporary.stat().st_size == 0
+            ):
                 detail = completed.stderr.strip().splitlines()[-1:] or ["ffmpeg failed"]
                 raise RuntimeError(detail[0])
+            os.replace(temporary, output)
         except Exception as error:  # job errors are reported through the API
+            temporary.unlink(missing_ok=True)
             self._update(job_id, status="failed", error=str(error)[:300])
             return
         self._update(
@@ -347,9 +355,14 @@ def parse_extensions(value: str) -> frozenset[str]:
     return frozenset(extensions)
 
 
-def file_url(base_url: str, relative_path: str, token: str | None) -> str:
+def file_url(
+    base_url: str,
+    relative_path: str,
+    token: str | None,
+    route: str = "media",
+) -> str:
     encoded = quote(relative_path, safe="/")
-    url = f"{base_url.rstrip('/')}/media/{encoded}"
+    url = f"{base_url.rstrip('/')}/{route.strip('/')}/{encoded}"
     if token:
         url += f"?token={quote(token, safe='')}"
     return url
@@ -382,13 +395,39 @@ def movie_title(path: Path) -> tuple[str, str | None]:
 
 
 def catalog(settings: Settings, base_url: str) -> tuple[list[dict[str, object]], int]:
+    return catalog_directory(settings, settings.root, base_url, "media")
+
+
+def clip_catalog(
+    settings: Settings,
+    base_url: str,
+) -> tuple[list[dict[str, object]], int]:
+    if settings.export_root is None:
+        return [], 0
+    return catalog_directory(
+        settings,
+        settings.export_root / "clips",
+        base_url,
+        "clips",
+        clips=True,
+    )
+
+
+def catalog_directory(
+    settings: Settings,
+    root: Path,
+    base_url: str,
+    route: str,
+    clips: bool = False,
+) -> tuple[list[dict[str, object]], int]:
     items: list[dict[str, object]] = []
     hidden = 0
-    for path in settings.root.rglob("*"):
+    allowed_extensions = frozenset({".mp4"}) if clips else settings.extensions
+    for path in root.rglob("*"):
         try:
             if path.is_symlink() or not path.is_file():
                 continue
-            if path.suffix.lower() not in settings.extensions:
+            if path.suffix.lower() not in allowed_extensions:
                 continue
             stat = path.stat()
         except OSError:
@@ -403,8 +442,16 @@ def catalog(settings: Settings, base_url: str) -> tuple[list[dict[str, object]],
             hidden += 1
             continue
 
-        relative = path.relative_to(settings.root).as_posix()
-        title, year = movie_title(path)
+        relative = path.relative_to(root).as_posix()
+        if clips:
+            title = re.sub(
+                r" - \d{4}-\d{2}-\d{2} \d{2}\.\d{2}\.\d{2}-[0-9a-f]{4}$",
+                "",
+                path.stem,
+            )
+            year = None
+        else:
+            title, year = movie_title(path)
         items.append(
             {
                 "name": path.name,
@@ -415,11 +462,21 @@ def catalog(settings: Settings, base_url: str) -> tuple[list[dict[str, object]],
                 "modified": datetime.fromtimestamp(
                     stat.st_mtime, tz=timezone.utc
                 ).isoformat(),
-                "url": file_url(base_url, relative, settings.token),
+                "url": file_url(base_url, relative, settings.token, route),
+                "created": (
+                    datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).strftime(
+                        "%b %d %H:%M UTC"
+                    )
+                    if clips
+                    else None
+                ),
                 **media,
             }
         )
-    items.sort(key=lambda item: (str(item["title"]).casefold(), str(item["path"])))
+    if clips:
+        items.sort(key=lambda item: str(item["modified"]), reverse=True)
+    else:
+        items.sort(key=lambda item: (str(item["title"]).casefold(), str(item["path"])))
     return items, hidden
 
 
@@ -511,11 +568,26 @@ class MediaHandler(BaseHTTPRequestHandler):
                 {"files": files, "hidden": hidden}, send_body=send_body
             )
             return
+        if parsed.path == "/api/clips":
+            base_url = self.settings.public_base_url or self._request_base_url()
+            files, hidden = clip_catalog(self.settings, base_url)
+            self._send_json(
+                {"files": files, "hidden": hidden}, send_body=send_body
+            )
+            return
         if parsed.path.startswith("/api/export/jobs/"):
             self._send_job(parsed.path.removeprefix("/api/export/jobs/"), send_body)
             return
         if parsed.path.startswith("/media/"):
             self._send_media(parsed.path.removeprefix("/media/"), send_body)
+            return
+        if parsed.path.startswith("/clips/") and self.settings.export_root:
+            self._send_media(
+                parsed.path.removeprefix("/clips/"),
+                send_body,
+                self.settings.export_root / "clips",
+                frozenset({".mp4"}),
+            )
             return
         self._send_json(
             {"error": "not found"},
@@ -660,9 +732,16 @@ class MediaHandler(BaseHTTPRequestHandler):
         if send_body:
             self.wfile.write(body)
 
-    def _send_media(self, encoded_path: str, send_body: bool) -> None:
-        path = resolve_media_path(self.settings.root, encoded_path)
-        if path is None or path.suffix.lower() not in self.settings.extensions:
+    def _send_media(
+        self,
+        encoded_path: str,
+        send_body: bool,
+        root: Path | None = None,
+        extensions: frozenset[str] | None = None,
+    ) -> None:
+        path = resolve_media_path(root or self.settings.root, encoded_path)
+        allowed_extensions = extensions or self.settings.extensions
+        if path is None or path.suffix.lower() not in allowed_extensions:
             self._send_json(
                 {"error": "file not found"},
                 status=HTTPStatus.NOT_FOUND,

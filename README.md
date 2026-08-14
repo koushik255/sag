@@ -108,11 +108,12 @@ Then edit `~/.config/mpv/script-opts/stopandgo.conf`:
 
 ```ini
 api_url=https://your-server.your-tailnet.ts.net/api/files
+clips_api_url=
 token=
 key=Ctrl+b
 ```
 
-If the server was started with a token, put the same value in `token`. Start mpv, press `Ctrl+b`, select with the arrow keys, and press Enter. Press `r` to rescan or Esc to close the picker.
+If the server was started with a token, put the same value in `token`. Start mpv, press `Ctrl+b`, select with the arrow keys, and press Enter. Press `Tab` or `c` to switch between the movie library and completed server clips, `r` to rescan, or Esc to close the picker. `clips_api_url` can normally stay blank because it is inferred from `api_url`.
 
 During playback, press `5` to queue an exact 15-second MP4 clip on the server, or `s` to capture the current mpv frame with subtitles and upload it as a PNG. The server stores them in the `clips` and `screenshots` folders below `STOPANDGO_EXPORT_ROOT`. Configure the keys, server URL, token, or duration in `~/.config/mpv/script-opts/clip-last.conf`.
 
@@ -154,7 +155,9 @@ It prompts for the server URL and securely prompts for the StopAndGo application
 
 - `GET /healthz` — unauthenticated health check
 - `GET /api/files` — JSON catalog
+- `GET /api/clips` — JSON catalog of completed server clips, newest first
 - `GET` or `HEAD /media/<relative-path>` — video stream with one HTTP byte range per request
+- `GET` or `HEAD /clips/<relative-path>` — completed clip stream with byte-range support
 - `POST /api/export/clip` — queue a server-side ffmpeg clip
 - `POST /api/export/screenshot` — upload an mpv-rendered PNG
 - `GET /api/export/jobs/<id>` — check clip progress

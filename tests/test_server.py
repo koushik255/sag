@@ -114,11 +114,14 @@ class TitleTests(unittest.TestCase):
 class ServerTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tempdir = TemporaryDirectory()
+        self.export_tempdir = TemporaryDirectory()
         self.root = Path(self.tempdir.name).resolve()
         (self.root / "Movie.mkv").write_bytes(b"0123456789")
         (self.root / "ignore.txt").write_text("nope")
-        self.exports = self.root / "exports"
+        self.exports = Path(self.export_tempdir.name).resolve()
         (self.exports / "screenshots").mkdir(parents=True)
+        (self.exports / "clips").mkdir(parents=True)
+        (self.exports / "clips" / "Saved Clip.mp4").write_bytes(b"abcdefghij")
         settings = Settings(
             root=self.root,
             token="test-token",
@@ -136,6 +139,7 @@ class ServerTests(unittest.TestCase):
         self.server.server_close()
         self.thread.join()
         self.tempdir.cleanup()
+        self.export_tempdir.cleanup()
 
     def test_catalog_and_range_request(self) -> None:
         request = Request(
@@ -159,6 +163,29 @@ class ServerTests(unittest.TestCase):
             urlopen(f"{self.base_url}/api/files")
         self.assertEqual(raised.exception.code, 401)
         raised.exception.close()
+
+    def test_catalogs_and_streams_completed_clips(self) -> None:
+        request = Request(
+            f"{self.base_url}/api/clips",
+            headers={"Authorization": "Bearer test-token"},
+        )
+        with urlopen(request) as response:
+            body = json.load(response)
+        self.assertEqual([item["path"] for item in body["files"]], ["Saved Clip.mp4"])
+        self.assertEqual(body["files"][0]["title"], "Saved Clip")
+        self.assertIn("created", body["files"][0])
+        self.assertTrue(
+            body["files"][0]["url"].endswith(
+                "/clips/Saved%20Clip.mp4?token=test-token"
+            )
+        )
+
+        clip_request = Request(
+            body["files"][0]["url"], headers={"Range": "bytes=2-5"}
+        )
+        with urlopen(clip_request) as response:
+            self.assertEqual(response.status, 206)
+            self.assertEqual(response.read(), b"cdef")
 
     def test_saves_authenticated_png_screenshot(self) -> None:
         png = b"\x89PNG\r\n\x1a\n" + b"test-image-data"

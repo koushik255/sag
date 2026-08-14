@@ -58,28 +58,40 @@ $configDir = if (Test-Path $portableConfig) {
 $scriptsDir = Join-Path $configDir "scripts"
 $optionsDir = Join-Path $configDir "script-opts"
 New-Item -ItemType Directory -Force -Path $scriptsDir, $optionsDir | Out-Null
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 
 Copy-Item (Join-Path $projectRoot "client\stopandgo.lua") (Join-Path $scriptsDir "stopandgo.lua") -Force
 Copy-Item (Join-Path $projectRoot "client\clip-last.lua") (Join-Path $scriptsDir "clip-last.lua") -Force
 
 $baseUrl = $ServerUrl.TrimEnd("/")
-@"
+$libraryConfig = @"
 api_url=$baseUrl/api/files
+clips_api_url=$baseUrl/api/clips
 token=$Token
 key=Ctrl+b
 timeout=10
 rows=8
 open_on_start=no
-"@ | Set-Content -Encoding UTF8 (Join-Path $optionsDir "stopandgo.conf")
+"@
+[IO.File]::WriteAllText(
+    (Join-Path $optionsDir "stopandgo.conf"),
+    $libraryConfig,
+    $utf8NoBom
+)
 
-@"
+$exportConfig = @"
 clip_key=5
 screenshot_key=s
 seconds=15
 server_url=$baseUrl
 token=$Token
 timeout=30
-"@ | Set-Content -Encoding UTF8 (Join-Path $optionsDir "clip-last.conf")
+"@
+[IO.File]::WriteAllText(
+    (Join-Path $optionsDir "clip-last.conf"),
+    $exportConfig,
+    $utf8NoBom
+)
 
 # Register the original mpv for Explorer's Open With menu. This is per-user.
 & $MpvPath --register

@@ -1,6 +1,9 @@
 # Full catalog endpoint exposed by the StopAndGo server.
 api_url=https://your-server.your-tailnet.ts.net/api/files
 
+# Optional. When blank, the clips endpoint is inferred from api_url.
+clips_api_url=
+
 # Leave blank when the server is reachable only through Tailscale Serve.
 token=
 
