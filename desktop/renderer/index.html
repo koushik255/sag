@@ -3,97 +3,61 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ws://127.0.0.1:5173; worker-src 'self' blob:; media-src 'none'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ws://127.0.0.1:5173; worker-src 'self' blob:; media-src 'none'; object-src 'none'; base-uri 'none'" />
     <title>StopAndGo</title>
   </head>
   <body>
-    <div class="shell">
-      <aside class="sidebar">
-        <div class="brand"><span class="brand-mark">S</span><span>StopAndGo</span></div>
-        <nav aria-label="Library">
-          <button class="nav-item active" data-library="movies">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6.5h16v12H4zM8 3v3.5M16 3v3.5M4 10h16"/></svg>
-            Movies
-          </button>
-          <button class="nav-item" data-library="clips">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM9 9l6 3-6 3z"/></svg>
-            Clips
-          </button>
-          <button class="nav-item" data-library="screenshots">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h4l1.5-2h5L16 8h4v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
-            Screenshots
-          </button>
-        </nav>
-        <button class="nav-item settings-button" id="open-settings">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1l2-1.5-2-3.4-2.4 1a8 8 0 0 0-1.7-1L14.5 3h-5l-.4 3.1a8 8 0 0 0-1.7 1l-2.4-1-2 3.4L5.1 11a7 7 0 0 0 0 2L3 14.5l2 3.4 2.4-1a8 8 0 0 0 1.7 1l.4 3.1h5l.4-3.1a8 8 0 0 0 1.7-1l2.4 1 2-3.4-2.1-1.5a7 7 0 0 0 .1-1z"/></svg>
-          Connection
-        </button>
-      </aside>
+    <header class="appbar">
+      <nav aria-label="Library">
+        <button class="nav-item active" data-library="movies">Movies</button>
+        <button class="nav-item" data-library="clips">Clips</button>
+        <button class="nav-item" data-library="screenshots">Screenshots</button>
+      </nav>
+      <div class="appbar-tools">
+        <input id="search" type="search" placeholder="Search" autocomplete="off" aria-label="Search library" />
+        <button id="refresh" title="Refresh library" aria-label="Refresh library">↻</button>
+        <button id="open-settings">Connection</button>
+      </div>
+    </header>
 
-      <main class="main">
-        <header class="topbar">
-          <div>
-            <p class="eyebrow">YOUR LIBRARY</p>
-            <h1 id="library-title">Movies</h1>
-            <p id="library-note">Not connected</p>
-          </div>
-          <div class="topbar-actions">
-            <label class="search-box">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg>
-              <input id="search" type="search" placeholder="Search your library" autocomplete="off" />
-            </label>
-            <button class="round-button" id="refresh" title="Refresh library" aria-label="Refresh library">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M6.1 8.2A7 7 0 0 1 18.7 7M17.9 15.8A7 7 0 0 1 5.3 17"/></svg>
-            </button>
-          </div>
-        </header>
-        <section id="notice" class="notice" hidden></section>
-        <section id="library" class="library-grid" aria-live="polite"></section>
-      </main>
-    </div>
+    <main class="main">
+      <header class="library-header">
+        <h1 id="library-title">Movies</h1>
+        <p id="library-note">Not connected</p>
+      </header>
+      <section id="notice" class="notice" hidden></section>
+      <section id="library" class="library-grid" aria-live="polite"></section>
+    </main>
 
     <section id="player-view" class="player-view" hidden>
       <div class="stage" id="stage">
         <canvas id="video"></canvas>
         <div class="player-topbar">
-          <button id="close-player" class="player-icon-button" aria-label="Back to library">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
-          </button>
+          <button id="close-player" class="icon-button" aria-label="Back to library">←</button>
           <div class="player-heading">
             <h2 id="player-title"></h2>
             <p id="player-details"></p>
           </div>
         </div>
 
-        <div id="player-error" class="player-message error" hidden></div>
-        <div id="player-warning" class="player-message warning" hidden></div>
-        <div class="loading" id="player-loading"><span></span> Opening media</div>
+        <div id="player-error" class="player-message" hidden></div>
+        <div id="player-warning" class="player-message" hidden></div>
+        <div class="loading" id="player-loading">Opening media…</div>
         <div id="export-toast" class="export-toast" hidden></div>
 
         <div class="controls" id="controls">
           <input id="timeline" class="timeline" type="range" min="0" max="1" value="0" step="0.001" aria-label="Seek" />
           <div class="control-row">
             <button id="play" class="control-button play-button" aria-label="Play">
-              <svg class="play-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7z"/></svg>
-              <svg class="pause-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h4v14H7zM14 5h4v14h-4z"/></svg>
+              <span class="play-icon">▶</span><span class="pause-icon">Ⅱ</span>
             </button>
             <span id="current-time" class="time">0:00</span><span class="time-separator">/</span><span id="duration" class="time">0:00</span>
-            <button id="mute" class="control-button" aria-label="Mute">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 10v4h4l5 4V6L9 10zM17 9a4 4 0 0 1 0 6M19 6a8 8 0 0 1 0 12"/></svg>
-            </button>
+            <button id="mute" class="control-button" aria-label="Mute">vol</button>
             <input id="volume" class="volume" type="range" min="0" max="1" value="0.7" step="0.01" aria-label="Volume" />
             <div class="control-spacer"></div>
-            <button id="make-clip" class="action-button" title="Save the last 15 seconds (5)">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10v16H7zM3 8h4M17 8h4M3 16h4M17 16h4"/></svg>
-              Clip 15s
-            </button>
-            <button id="take-screenshot" class="action-button" title="Save screenshot (S)">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h4l1.5-2h5L16 8h4v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
-              Screenshot
-            </button>
-            <button id="fullscreen" class="control-button" aria-label="Fullscreen" title="Fullscreen (F)">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></svg>
-            </button>
+            <button id="make-clip" class="action-button" title="Save the last 15 seconds (5)">clip 15s</button>
+            <button id="take-screenshot" class="action-button" title="Save screenshot (S)">screenshot</button>
+            <button id="fullscreen" class="control-button" aria-label="Fullscreen" title="Fullscreen (F)">⛶</button>
           </div>
         </div>
       </div>
@@ -101,28 +65,23 @@
 
     <section id="screenshot-view" class="screenshot-view" hidden>
       <div class="screenshot-toolbar">
-        <button id="close-screenshot" class="player-icon-button" aria-label="Back to screenshots">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
-        </button>
+        <button id="close-screenshot" class="icon-button" aria-label="Back to screenshots">←</button>
         <div class="player-heading"><h2 id="screenshot-title"></h2><p id="screenshot-details"></p></div>
       </div>
-      <div id="screenshot-loading" class="loading"><span></span> Loading screenshot</div>
-      <div id="screenshot-error" class="player-message error" hidden></div>
+      <div id="screenshot-loading" class="loading">Loading screenshot…</div>
+      <div id="screenshot-error" class="player-message" hidden></div>
       <img id="screenshot-image" alt="" />
     </section>
 
     <dialog id="settings-dialog">
       <form id="settings-form">
-        <div class="dialog-title">
-          <div><p class="eyebrow">STOPANDGO SERVER</p><h2>Connection</h2></div>
-          <button type="button" id="close-settings" aria-label="Close">×</button>
-        </div>
+        <div class="dialog-title"><h2>Connection</h2><button type="button" id="close-settings" aria-label="Close">×</button></div>
         <label>Server URL<input id="server-url" type="url" placeholder="http://100.x.x.x:8765" required /></label>
         <label>Token<input id="server-token" type="password" autocomplete="off" placeholder="Leave blank to keep saved token" /></label>
         <p id="token-note" class="form-note"></p>
         <p id="settings-status" class="form-status"></p>
         <div class="dialog-actions">
-          <button type="button" id="test-connection">Test connection</button>
+          <button type="button" id="test-connection">Test</button>
           <button type="submit" class="primary">Save</button>
         </div>
       </form>
