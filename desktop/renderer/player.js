@@ -42,6 +42,8 @@ export class MediaPlayer {
     this.asyncId = 0;
     this.dragging = false;
     this.volumeValue = 0.7;
+    this.subtitleCues = [];
+    this.subtitleLastUpdate = -Infinity;
 
     this.playButton.addEventListener('click', () => this.toggle());
     this.timeline.addEventListener('pointerdown', () => { this.dragging = true; });
@@ -198,8 +200,34 @@ export class MediaPlayer {
         this.timeline.value = String(Math.min(now, this.endTimestamp));
         this.currentTime.textContent = formatTime(now);
       }
+      this.updateSubtitles(now);
     }
     requestAnimationFrame(() => this.render());
+  }
+
+  setSubtitles(cues) {
+    this.subtitleCues = cues;
+    this.subtitleLastUpdate = -Infinity;
+    this.updateSubtitles(this.getTime(), true);
+  }
+
+  updateSubtitles(time, force = false) {
+    if (!force && Math.abs(time - this.subtitleLastUpdate) < 0.08) return;
+    this.subtitleLastUpdate = time;
+    const subtitleTime = Math.max(0, time - this.firstTimestamp);
+    const text = this.subtitleCues
+      .filter((cue) => cue.start <= subtitleTime && cue.end > subtitleTime)
+      .map((cue) => cue.text)
+      .join('\n');
+    if (this.subtitle.textContent !== text) this.subtitle.textContent = text;
+    this.subtitle.hidden = !text;
+  }
+
+  clearSubtitles() {
+    this.subtitleCues = [];
+    this.subtitleLastUpdate = -Infinity;
+    this.subtitle.textContent = '';
+    this.subtitle.hidden = true;
   }
 
   async updateNextFrame() {
@@ -315,6 +343,7 @@ export class MediaPlayer {
   async dispose() {
     this.pause();
     this.loaded = false;
+    this.clearSubtitles();
     this.asyncId++;
     await this.videoIterator?.return();
     await this.audioIterator?.return();

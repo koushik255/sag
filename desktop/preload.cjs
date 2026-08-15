@@ -10,4 +10,5 @@ contextBridge.exposeInMainWorld('stopAndGo', {
   readScreenshot: (url) => ipcRenderer.invoke('screenshot:read', url),
   createClip: (request) => ipcRenderer.invoke('export:clip', request),
   uploadScreenshot: (request) => ipcRenderer.invoke('export:screenshot', request),
+  pickSubtitle: () => ipcRenderer.invoke('subtitle:pick'),
 });

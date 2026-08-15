@@ -1,6 +1,6 @@
-import { app, BrowserWindow, ipcMain, safeStorage } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, safeStorage } from 'electron';
 import path from 'node:path';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, stat, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
 const appDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -297,6 +297,32 @@ async function uploadScreenshot({ path: moviePath, data }) {
   return result;
 }
 
+async function pickSubtitle() {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Choose subtitles',
+    properties: ['openFile'],
+    filters: [
+      { name: 'Subtitle files', extensions: ['srt', 'vtt', 'ass', 'ssa'] },
+    ],
+  });
+  if (result.canceled || result.filePaths.length !== 1) return null;
+
+  const filePath = result.filePaths[0];
+  const extension = path.extname(filePath).slice(1).toLowerCase();
+  if (!['srt', 'vtt', 'ass', 'ssa'].includes(extension)) {
+    throw new Error('Choose an SRT, VTT, ASS, or SSA subtitle file.');
+  }
+  const info = await stat(filePath);
+  if (!info.isFile() || info.size <= 0 || info.size > 10 * 1024 * 1024) {
+    throw new Error('The subtitle file must be smaller than 10 MB.');
+  }
+  return {
+    name: path.basename(filePath),
+    extension,
+    text: await readFile(filePath, 'utf8'),
+  };
+}
+
 function registerIpc() {
   ipcMain.handle('settings:get', () => publicSettings());
   ipcMain.handle('settings:save', (_event, value) => saveSettings(value));
@@ -321,6 +347,7 @@ function registerIpc() {
   ipcMain.handle('screenshot:read', (_event, url) => readScreenshot(url));
   ipcMain.handle('export:clip', (_event, request) => createClip(request));
   ipcMain.handle('export:screenshot', (_event, request) => uploadScreenshot(request));
+  ipcMain.handle('subtitle:pick', () => pickSubtitle());
 }
 
 function createWindow() {

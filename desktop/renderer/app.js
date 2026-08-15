@@ -1,5 +1,6 @@
 import './styles.css';
 import { MediaPlayer } from './player.js';
+import { parseSubtitle } from './subtitles.js';
 
 const elements = {
   library: document.querySelector('#library'),
@@ -18,6 +19,7 @@ const elements = {
   playerDetails: document.querySelector('#player-details'),
   clipButton: document.querySelector('#make-clip'),
   screenshotButton: document.querySelector('#take-screenshot'),
+  subtitleButton: document.querySelector('#add-subtitle'),
   exportToast: document.querySelector('#export-toast'),
   screenshotView: document.querySelector('#screenshot-view'),
   screenshotImage: document.querySelector('#screenshot-image'),
@@ -41,6 +43,7 @@ const player = new MediaPlayer({
   loading: document.querySelector('#player-loading'),
   error: document.querySelector('#player-error'),
   warning: document.querySelector('#player-warning'),
+  subtitle: document.querySelector('#subtitle'),
 });
 
 let currentLibrary = 'movies';
@@ -213,6 +216,8 @@ function openPlayer(item) {
   const canExport = currentLibrary === 'movies';
   elements.clipButton.hidden = !canExport;
   elements.screenshotButton.hidden = !canExport;
+  elements.subtitleButton.classList.remove('active');
+  elements.subtitleButton.title = 'Add subtitles';
   elements.playerView.hidden = false;
   void player.open(item);
 }
@@ -292,6 +297,21 @@ async function takeScreenshot() {
   }
 }
 
+async function addSubtitle() {
+  if (!activeItem) return;
+  try {
+    const file = await window.stopAndGo.pickSubtitle();
+    if (!file) return;
+    const cues = parseSubtitle(file.text, file.extension);
+    player.setSubtitles(cues);
+    elements.subtitleButton.classList.add('active');
+    elements.subtitleButton.title = `Replace subtitles (${file.name})`;
+    showToast(`${file.name} loaded`);
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : String(error), 'error');
+  }
+}
+
 function showSettings() {
   elements.serverUrl.value = savedSettings.serverUrl || '';
   elements.serverToken.value = '';
@@ -330,6 +350,7 @@ document.querySelector('#close-player').addEventListener('click', () => closePla
 document.querySelector('#close-screenshot').addEventListener('click', closeScreenshot);
 elements.clipButton.addEventListener('click', () => createClip());
 elements.screenshotButton.addEventListener('click', () => takeScreenshot());
+elements.subtitleButton.addEventListener('click', () => addSubtitle());
 elements.search.addEventListener('input', renderCatalog);
 
 document.querySelector('#test-connection').addEventListener('click', async () => {
