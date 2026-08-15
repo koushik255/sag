@@ -8,6 +8,8 @@
 *.tar.gz
 *.tgz
 *.zip
+desktop/dist/
+desktop/node_modules/
 
 # Python test/build artifacts
 __pycache__/

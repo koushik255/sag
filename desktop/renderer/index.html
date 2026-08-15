@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws://127.0.0.1:5173; worker-src 'self' blob:; media-src 'none'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'" />
+    <title>StopAndGo</title>
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="brand">stopandgo</div>
+        <nav aria-label="Library">
+          <button class="nav-item active" data-library="movies">movies</button>
+          <button class="nav-item" data-library="clips">clips</button>
+        </nav>
+        <button class="nav-item settings-button" id="open-settings">connection</button>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <h1 id="library-title">movies</h1>
+            <p id="library-note">not connected</p>
+          </div>
+          <div class="topbar-actions">
+            <input id="search" type="search" placeholder="filter" autocomplete="off" />
+            <button id="refresh" title="Refresh library">refresh</button>
+          </div>
+        </header>
+
+        <section id="notice" class="notice" hidden></section>
+        <section id="library" class="library"></section>
+      </main>
+    </div>
+
+    <section id="player-view" class="player-view" hidden>
+      <header class="player-header">
+        <button id="close-player">← library</button>
+        <div>
+          <h2 id="player-title"></h2>
+          <p id="player-details"></p>
+        </div>
+      </header>
+      <div id="player-error" class="player-message error" hidden></div>
+      <div id="player-warning" class="player-message warning" hidden></div>
+      <div class="stage" id="stage">
+        <canvas id="video"></canvas>
+        <div class="loading" id="player-loading">opening media…</div>
+        <div class="controls" id="controls">
+          <button id="play" class="play-button" aria-label="Play">▶</button>
+          <span id="current-time" class="time">00:00</span>
+          <input id="timeline" type="range" min="0" max="1" value="0" step="0.001" aria-label="Seek" />
+          <span id="duration" class="time">00:00</span>
+          <button id="mute" aria-label="Mute">vol</button>
+          <input id="volume" type="range" min="0" max="1" value="0.7" step="0.01" aria-label="Volume" />
+          <button id="fullscreen" aria-label="Fullscreen">full</button>
+        </div>
+      </div>
+    </section>
+
+    <dialog id="settings-dialog">
+      <form id="settings-form">
+        <div class="dialog-title">
+          <h2>connection</h2>
+          <button type="button" id="close-settings" aria-label="Close">×</button>
+        </div>
+        <label>
+          server url
+          <input id="server-url" type="url" placeholder="http://100.x.x.x:8765" required />
+        </label>
+        <label>
+          token
+          <input id="server-token" type="password" autocomplete="off" placeholder="leave blank to keep saved token" />
+        </label>
+        <p id="token-note" class="form-note"></p>
+        <p id="settings-status" class="form-status"></p>
+        <div class="dialog-actions">
+          <button type="button" id="test-connection">test</button>
+          <button type="submit" class="primary">save</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

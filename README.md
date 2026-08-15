@@ -6,6 +6,10 @@ StopAndGo is a small mpv extension for browsing and playing videos stored on ano
 - an mpv Lua script that opens a remote library picker with `Ctrl+b`.
 - export helpers that create 15-second clips and screenshots on the server.
 
+There is also an experimental vanilla Electron desktop player in `desktop/`.
+It uses Mediabunny/WebCodecs directly so codec support must be validated on each
+computer; the existing mpv clients remain the reliable fallback.
+
 Byte ranges matter: unlike `ssh server 'cat movie.mkv' | mpv -`, mpv can seek without reading the whole file up to the new position.
 
 ## Recommended layout
@@ -150,6 +154,26 @@ The server does not change. On Windows 10 or 11, install Tailscale and sign in t
 ```
 
 It prompts for the server URL and securely prompts for the StopAndGo application token. You can also pass `-ServerUrl "http://your-server:8765"` and `-MpvPath "C:\path\to\mpv.exe"`. The installer uses `%APPDATA%\mpv` unless a `portable_config` directory exists beside `mpv.exe`, registers the original mpv in Explorer's **Open with** menu, and creates a separate searchable **MPV Library** Start-menu shortcut. The keys and server-side export behavior are the same as on macOS.
+
+## Experimental Electron player
+
+The desktop prototype intentionally uses plain HTML, CSS, and JavaScript. It
+keeps the server token in Electron's main process, encrypts it with the operating
+system credential store when available, and permits the renderer to request only
+media URLs returned by the current catalog.
+
+```sh
+cd desktop
+npm install
+npm run dev
+```
+
+Use the same base server URL and token as the mpv client. `npm run start` builds
+the renderer and starts Electron without Vite's development server. The player
+currently supports Movies and Clips, search, play/pause, seeking, volume, and
+fullscreen. It reports WebCodecs compatibility errors for tracks the current
+computer cannot decode. Packaging, subtitles, export shortcuts, and playback
+resume are later milestones.
 
 ## API
 
