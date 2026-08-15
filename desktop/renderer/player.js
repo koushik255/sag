@@ -62,9 +62,12 @@ export class MediaPlayer {
       this.updateVolume();
     });
     this.fullscreen.addEventListener('click', () => {
-      if (document.fullscreenElement) void document.exitFullscreen();
-      else void this.stage.requestFullscreen();
+      void this.toggleFullscreen();
     });
+    this.canvas.addEventListener('click', () => this.toggle());
+    this.stage.addEventListener('dblclick', () => { void this.toggleFullscreen(); });
+    this.controls.addEventListener('click', (event) => event.stopPropagation());
+    this.controls.addEventListener('dblclick', (event) => event.stopPropagation());
     requestAnimationFrame(() => this.render());
   }
 
@@ -75,7 +78,8 @@ export class MediaPlayer {
     this.loading.hidden = false;
     this.error.hidden = true;
     this.warning.hidden = true;
-    this.playButton.textContent = '▶';
+    this.playButton.classList.remove('playing');
+    this.playButton.setAttribute('aria-label', 'Play');
 
     try {
       if (!Number.isSafeInteger(Number(item.size)) || Number(item.size) <= 0) {
@@ -245,7 +249,8 @@ export class MediaPlayer {
       this.audioIterator = this.audioSink.buffers(this.getTime());
       void this.runAudioIterator(id);
     }
-    this.playButton.textContent = '❚❚';
+    this.playButton.classList.add('playing');
+    this.playButton.setAttribute('aria-label', 'Pause');
   }
 
   pause() {
@@ -256,7 +261,8 @@ export class MediaPlayer {
     this.audioIterator = null;
     for (const node of this.queuedAudio) node.stop();
     this.queuedAudio.clear();
-    this.playButton.textContent = '▶';
+    this.playButton.classList.remove('playing');
+    this.playButton.setAttribute('aria-label', 'Play');
   }
 
   toggle() {
@@ -275,7 +281,35 @@ export class MediaPlayer {
 
   updateVolume() {
     if (this.gainNode) this.gainNode.gain.value = this.volumeValue ** 2;
-    this.mute.textContent = this.volumeValue === 0 ? 'muted' : 'vol';
+    this.mute.classList.toggle('muted', this.volumeValue === 0);
+    this.mute.setAttribute('aria-label', this.volumeValue === 0 ? 'Unmute' : 'Mute');
+  }
+
+  async toggleFullscreen() {
+    if (document.fullscreenElement) {
+      await document.exitFullscreen();
+    } else {
+      await this.stage.requestFullscreen();
+    }
+  }
+
+  capturePng() {
+    if (!this.loaded || this.canvas.hidden || !this.canvas.width || !this.canvas.height) {
+      return Promise.reject(new Error('There is no video frame to capture.'));
+    }
+    return new Promise((resolve, reject) => {
+      this.canvas.toBlob(async (blob) => {
+        if (!blob) {
+          reject(new Error('Could not capture the current frame.'));
+          return;
+        }
+        try {
+          resolve(new Uint8Array(await blob.arrayBuffer()));
+        } catch (error) {
+          reject(error);
+        }
+      }, 'image/png');
+    });
   }
 
   async dispose() {

@@ -170,18 +170,23 @@ npm run dev
 
 Use the same base server URL and token as the mpv client. `npm run start` builds
 the renderer and starts Electron without Vite's development server. The player
-currently supports Movies and Clips, search, play/pause, seeking, volume, and
-fullscreen. It reports WebCodecs compatibility errors for tracks the current
-computer cannot decode. Packaging, subtitles, export shortcuts, and playback
-resume are later milestones.
+supports thumbnail libraries for Movies, Clips, and Screenshots, plus search,
+play/pause, seeking, volume, fullscreen, and server exports. While watching a
+movie, press `5` to queue the previous 15 seconds as a server clip, `s` to save
+the current decoded frame as a server screenshot, or `f` to toggle fullscreen.
+It reports WebCodecs compatibility errors for tracks the current computer cannot
+decode. Packaging, subtitles, and playback resume are later milestones.
 
 ## API
 
 - `GET /healthz` — unauthenticated health check
 - `GET /api/files` — JSON catalog
 - `GET /api/clips` — JSON catalog of completed server clips, newest first
+- `GET /api/screenshots` — JSON catalog of server screenshots, newest first
+- `GET /thumbnail/<library>/<relative-path>` — cached FFmpeg thumbnail
 - `GET` or `HEAD /media/<relative-path>` — video stream with one HTTP byte range per request
 - `GET` or `HEAD /clips/<relative-path>` — completed clip stream with byte-range support
+- `GET /screenshots/<relative-path>` — completed screenshot image
 - `POST /api/export/clip` — queue a server-side ffmpeg clip
 - `POST /api/export/screenshot` — upload an mpv-rendered PNG
 - `GET /api/export/jobs/<id>` — check clip progress

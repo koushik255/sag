@@ -5,6 +5,9 @@ import { fileURLToPath } from 'node:url';
 
 const appDirectory = path.dirname(fileURLToPath(import.meta.url));
 const allowedMediaUrls = new Set();
+const allowedThumbnailUrls = new Set();
+const allowedMoviePaths = new Set();
+const allowedScreenshotUrls = new Set();
 
 let mainWindow;
 let settings = {
@@ -81,6 +84,9 @@ async function saveSettings({ serverUrl, token, keepToken = false }) {
 
   settings = { serverUrl: normalized, encryptedToken, sessionToken };
   allowedMediaUrls.clear();
+  allowedThumbnailUrls.clear();
+  allowedMoviePaths.clear();
+  allowedScreenshotUrls.clear();
   await writeFile(
     settingsPath(),
     `${JSON.stringify({ serverUrl: normalized, encryptedToken }, null, 2)}\n`,
@@ -112,7 +118,7 @@ async function fetchJson(pathname) {
   return response.json();
 }
 
-function sanitizeCatalog(payload) {
+function sanitizeCatalog(payload, kind) {
   const files = Array.isArray(payload?.files) ? payload.files : [];
   const cleanFiles = files.map((file) => {
     const url = new URL(file.url);
@@ -122,19 +128,44 @@ function sanitizeCatalog(payload) {
     url.searchParams.delete('token');
     url.hash = '';
     const cleanUrl = url.toString();
-    allowedMediaUrls.add(cleanUrl);
-    return { ...file, url: cleanUrl };
+    if (kind === 'screenshots') {
+      allowedScreenshotUrls.add(cleanUrl);
+    } else {
+      allowedMediaUrls.add(cleanUrl);
+    }
+    let thumbnailUrl = null;
+    if (file.thumbnail_url) {
+      const thumbnail = new URL(file.thumbnail_url);
+      if (!['http:', 'https:'].includes(thumbnail.protocol)) {
+        throw new Error('The server returned a thumbnail URL with an unsupported protocol.');
+      }
+      thumbnail.searchParams.delete('token');
+      thumbnail.hash = '';
+      thumbnailUrl = thumbnail.toString();
+      allowedThumbnailUrls.add(thumbnailUrl);
+    }
+    if (kind === 'movies' && typeof file.path === 'string') {
+      allowedMoviePaths.add(file.path);
+    }
+    return { ...file, url: cleanUrl, thumbnail_url: thumbnailUrl };
   });
   return { files: cleanFiles, hidden: Number(payload?.hidden) || 0 };
 }
 
 async function loadCatalog(kind) {
-  if (!['movies', 'clips'].includes(kind)) {
+  if (!['movies', 'clips', 'screenshots'].includes(kind)) {
     throw new Error('Unknown library.');
   }
-  const endpoint = kind === 'clips' ? '/api/clips' : '/api/files';
+  const endpoint = kind === 'clips'
+    ? '/api/clips'
+    : kind === 'screenshots' ? '/api/screenshots' : '/api/files';
   allowedMediaUrls.clear();
-  return sanitizeCatalog(await fetchJson(endpoint));
+  allowedThumbnailUrls.clear();
+  allowedScreenshotUrls.clear();
+  if (kind === 'movies') {
+    allowedMoviePaths.clear();
+  }
+  return sanitizeCatalog(await fetchJson(endpoint), kind);
 }
 
 function validatedMediaUrl(rawUrl) {
@@ -173,6 +204,99 @@ async function readMedia({ url, start, end }) {
   return body;
 }
 
+async function readThumbnail(rawUrl) {
+  const url = new URL(rawUrl);
+  url.searchParams.delete('token');
+  url.hash = '';
+  const cleanUrl = url.toString();
+  if (!allowedThumbnailUrls.has(cleanUrl)) {
+    throw new Error('The requested thumbnail is not in the current library.');
+  }
+  const response = await fetch(cleanUrl, { headers: authHeaders({ Accept: 'image/*' }) });
+  const contentType = response.headers.get('content-type') || '';
+  const contentLength = Number(response.headers.get('content-length'));
+  if (!response.ok || !contentType.startsWith('image/') || contentLength > 5 * 1024 * 1024) {
+    await response.body?.cancel();
+    throw new Error(`Could not load thumbnail (${response.status}).`);
+  }
+  return {
+    contentType,
+    body: new Uint8Array(await response.arrayBuffer()),
+  };
+}
+
+async function readScreenshot(rawUrl) {
+  const url = new URL(rawUrl);
+  url.searchParams.delete('token');
+  url.hash = '';
+  const cleanUrl = url.toString();
+  if (!allowedScreenshotUrls.has(cleanUrl)) {
+    throw new Error('The requested screenshot is not in the current library.');
+  }
+  const response = await fetch(cleanUrl, { headers: authHeaders({ Accept: 'image/png' }) });
+  const contentLength = Number(response.headers.get('content-length'));
+  if (!response.ok || response.headers.get('content-type') !== 'image/png' || contentLength > 50 * 1024 * 1024) {
+    await response.body?.cancel();
+    throw new Error(`Could not load screenshot (${response.status}).`);
+  }
+  return new Uint8Array(await response.arrayBuffer());
+}
+
+function validateMoviePath(value) {
+  if (typeof value !== 'string' || !allowedMoviePaths.has(value)) {
+    throw new Error('The movie is not in the current server catalog.');
+  }
+  return value;
+}
+
+async function postJson(pathname, value) {
+  const response = await fetch(`${settings.serverUrl}${pathname}`, {
+    method: 'POST',
+    headers: authHeaders({
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    }),
+    body: JSON.stringify(value),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(result.error || `StopAndGo server error: ${response.status}`);
+  }
+  return result;
+}
+
+async function createClip({ path: moviePath, end, duration = 15 }) {
+  const path = validateMoviePath(moviePath);
+  if (!Number.isFinite(end) || end < 0 || !Number.isFinite(duration) || duration < 1 || duration > 60) {
+    throw new Error('Invalid clip time.');
+  }
+  return postJson('/api/export/clip', { path, end, duration });
+}
+
+async function uploadScreenshot({ path: moviePath, data }) {
+  const path = validateMoviePath(moviePath);
+  const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+  if (bytes.byteLength < 8 || bytes.byteLength > 50 * 1024 * 1024) {
+    throw new Error('Invalid screenshot size.');
+  }
+  const response = await fetch(
+    `${settings.serverUrl}/api/export/screenshot?${new URLSearchParams({ path })}`,
+    {
+      method: 'POST',
+      headers: authHeaders({
+        Accept: 'application/json',
+        'Content-Type': 'image/png',
+      }),
+      body: bytes,
+    },
+  );
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(result.error || `StopAndGo server error: ${response.status}`);
+  }
+  return result;
+}
+
 function registerIpc() {
   ipcMain.handle('settings:get', () => publicSettings());
   ipcMain.handle('settings:save', (_event, value) => saveSettings(value));
@@ -193,6 +317,10 @@ function registerIpc() {
   });
   ipcMain.handle('catalog:list', (_event, kind) => loadCatalog(kind));
   ipcMain.handle('media:read', (_event, request) => readMedia(request));
+  ipcMain.handle('thumbnail:read', (_event, url) => readThumbnail(url));
+  ipcMain.handle('screenshot:read', (_event, url) => readScreenshot(url));
+  ipcMain.handle('export:clip', (_event, request) => createClip(request));
+  ipcMain.handle('export:screenshot', (_event, request) => uploadScreenshot(request));
 }
 
 function createWindow() {

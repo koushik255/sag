@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import hashlib
 import hmac
 import json
 import mimetypes
@@ -133,6 +134,7 @@ class Settings:
     probe: MediaProbe | None = None
     export_root: Path | None = None
     jobs: ExportJobs | None = None
+    thumbnailer: ThumbnailCache | None = None
 
 
 class MediaProbe:
@@ -336,6 +338,101 @@ class ExportJobs:
         )
 
 
+class ThumbnailCache:
+    """Create small, stable JPEG previews without rescanning video on each request."""
+
+    def __init__(
+        self,
+        ffmpeg: str,
+        cache_root: Path,
+        probe: MediaProbe | None,
+        timeout: float = 60.0,
+    ) -> None:
+        self.ffmpeg = ffmpeg
+        self.cache_root = cache_root
+        self.probe = probe
+        self.timeout = timeout
+        self._locks: dict[str, threading.Lock] = {}
+        self._lock = threading.Lock()
+
+    def get(self, source: Path) -> Path | None:
+        try:
+            stat = source.stat()
+        except OSError:
+            return None
+        signature = f"{source.resolve()}\0{stat.st_size}\0{stat.st_mtime_ns}"
+        key = hashlib.sha256(signature.encode("utf-8")).hexdigest()
+        output = self.cache_root / f"{key}.jpg"
+        if output.is_file() and output.stat().st_size > 0:
+            return output
+
+        with self._lock:
+            item_lock = self._locks.setdefault(key, threading.Lock())
+        with item_lock:
+            if output.is_file() and output.stat().st_size > 0:
+                return output
+            return self._create(source, output, stat.st_size, stat.st_mtime_ns)
+
+    def _create(
+        self,
+        source: Path,
+        output: Path,
+        size: int,
+        mtime_ns: int,
+    ) -> Path | None:
+        metadata = self.probe.inspect(source, size, mtime_ns) if self.probe else None
+        duration = float((metadata or {}).get("duration") or 0)
+        if source.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}:
+            timestamp = 0
+        elif 0 < duration <= 30:
+            timestamp = duration / 2
+        else:
+            timestamp = min(max(duration * 0.12, 5), 300)
+        temporary = output.with_name(f".{output.stem}.{secrets.token_hex(4)}.partial.jpg")
+        try:
+            completed = subprocess.run(
+                [
+                    self.ffmpeg,
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-y",
+                    "-ss",
+                    f"{timestamp:.3f}",
+                    "-i",
+                    str(source),
+                    "-map",
+                    "0:v:0",
+                    "-an",
+                    "-sn",
+                    "-frames:v",
+                    "1",
+                    "-vf",
+                    "scale=640:360:force_original_aspect_ratio=decrease,"
+                    "pad=640:360:(ow-iw)/2:(oh-ih)/2:color=black",
+                    "-q:v",
+                    "4",
+                    "-f",
+                    "image2",
+                    str(temporary),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=self.timeout,
+            )
+            if (
+                completed.returncode != 0
+                or not temporary.is_file()
+                or temporary.stat().st_size == 0
+            ):
+                raise RuntimeError("ffmpeg did not create a thumbnail")
+            os.replace(temporary, output)
+            return output
+        except (OSError, RuntimeError, subprocess.SubprocessError):
+            temporary.unlink(missing_ok=True)
+            return None
+
+
 def export_filename(title: str, extension: str) -> str:
     safe = re.sub(r"[^\w .()-]+", "-", title, flags=re.UNICODE)
     safe = re.sub(r"\s+", " ", safe).strip(" .-") or "capture"
@@ -413,6 +510,59 @@ def clip_catalog(
     )
 
 
+def screenshot_catalog(
+    settings: Settings,
+    base_url: str,
+) -> tuple[list[dict[str, object]], int]:
+    if settings.export_root is None:
+        return [], 0
+    root = settings.export_root / "screenshots"
+    items: list[dict[str, object]] = []
+    for path in root.rglob("*"):
+        try:
+            if path.is_symlink() or not path.is_file() or path.suffix.lower() != ".png":
+                continue
+            stat = path.stat()
+        except OSError:
+            continue
+        relative = path.relative_to(root).as_posix()
+        title = re.sub(
+            r" - \d{4}-\d{2}-\d{2} \d{2}\.\d{2}\.\d{2}-[0-9a-f]{4}$",
+            "",
+            path.stem,
+        )
+        items.append(
+            {
+                "name": path.name,
+                "title": title,
+                "year": None,
+                "path": relative,
+                "size": stat.st_size,
+                "modified": datetime.fromtimestamp(
+                    stat.st_mtime, tz=timezone.utc
+                ).isoformat(),
+                "created": datetime.fromtimestamp(
+                    stat.st_mtime, tz=timezone.utc
+                ).strftime("%b %d %H:%M UTC"),
+                "url": file_url(
+                    base_url, relative, settings.token, "screenshots"
+                ),
+                "thumbnail_url": (
+                    file_url(
+                        base_url,
+                        relative,
+                        settings.token,
+                        "thumbnail/screenshots",
+                    )
+                    if settings.thumbnailer
+                    else None
+                ),
+            }
+        )
+    items.sort(key=lambda item: str(item["modified"]), reverse=True)
+    return items, 0
+
+
 def catalog_directory(
     settings: Settings,
     root: Path,
@@ -463,6 +613,16 @@ def catalog_directory(
                     stat.st_mtime, tz=timezone.utc
                 ).isoformat(),
                 "url": file_url(base_url, relative, settings.token, route),
+                "thumbnail_url": (
+                    file_url(
+                        base_url,
+                        relative,
+                        settings.token,
+                        f"thumbnail/{route}",
+                    )
+                    if settings.thumbnailer
+                    else None
+                ),
                 "created": (
                     datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).strftime(
                         "%b %d %H:%M UTC"
@@ -575,6 +735,37 @@ class MediaHandler(BaseHTTPRequestHandler):
                 {"files": files, "hidden": hidden}, send_body=send_body
             )
             return
+        if parsed.path == "/api/screenshots":
+            base_url = self.settings.public_base_url or self._request_base_url()
+            files, hidden = screenshot_catalog(self.settings, base_url)
+            self._send_json(
+                {"files": files, "hidden": hidden}, send_body=send_body
+            )
+            return
+        if parsed.path.startswith("/thumbnail/media/"):
+            self._send_thumbnail(
+                parsed.path.removeprefix("/thumbnail/media/"),
+                send_body,
+                self.settings.root,
+                self.settings.extensions,
+            )
+            return
+        if parsed.path.startswith("/thumbnail/clips/") and self.settings.export_root:
+            self._send_thumbnail(
+                parsed.path.removeprefix("/thumbnail/clips/"),
+                send_body,
+                self.settings.export_root / "clips",
+                frozenset({".mp4"}),
+            )
+            return
+        if parsed.path.startswith("/thumbnail/screenshots/") and self.settings.export_root:
+            self._send_thumbnail(
+                parsed.path.removeprefix("/thumbnail/screenshots/"),
+                send_body,
+                self.settings.export_root / "screenshots",
+                frozenset({".png"}),
+            )
+            return
         if parsed.path.startswith("/api/export/jobs/"):
             self._send_job(parsed.path.removeprefix("/api/export/jobs/"), send_body)
             return
@@ -587,6 +778,13 @@ class MediaHandler(BaseHTTPRequestHandler):
                 send_body,
                 self.settings.export_root / "clips",
                 frozenset({".mp4"}),
+            )
+            return
+        if parsed.path.startswith("/screenshots/") and self.settings.export_root:
+            self._send_image(
+                parsed.path.removeprefix("/screenshots/"),
+                send_body,
+                self.settings.export_root / "screenshots",
             )
             return
         self._send_json(
@@ -788,6 +986,78 @@ class MediaHandler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             pass
 
+    def _send_thumbnail(
+        self,
+        encoded_path: str,
+        send_body: bool,
+        root: Path,
+        extensions: frozenset[str],
+    ) -> None:
+        source = resolve_media_path(root, encoded_path)
+        if source is None or source.suffix.lower() not in extensions:
+            self._send_json(
+                {"error": "file not found"},
+                status=HTTPStatus.NOT_FOUND,
+                send_body=send_body,
+            )
+            return
+        if not self.settings.thumbnailer:
+            self._send_json(
+                {"error": "thumbnails are disabled"},
+                status=HTTPStatus.SERVICE_UNAVAILABLE,
+                send_body=send_body,
+            )
+            return
+        thumbnail = self.settings.thumbnailer.get(source)
+        if thumbnail is None:
+            self._send_json(
+                {"error": "could not create thumbnail"},
+                status=HTTPStatus.INTERNAL_SERVER_ERROR,
+                send_body=send_body,
+            )
+            return
+        try:
+            size = thumbnail.stat().st_size
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "image/jpeg")
+            self.send_header("Content-Length", str(size))
+            self.send_header("Cache-Control", "private, max-age=86400")
+            self.end_headers()
+            if send_body:
+                with thumbnail.open("rb") as source_file:
+                    shutil.copyfileobj(source_file, self.wfile, COPY_CHUNK_SIZE)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        except OSError:
+            pass
+
+    def _send_image(
+        self,
+        encoded_path: str,
+        send_body: bool,
+        root: Path,
+    ) -> None:
+        image = resolve_media_path(root, encoded_path)
+        if image is None or image.suffix.lower() != ".png":
+            self._send_json(
+                {"error": "image not found"},
+                status=HTTPStatus.NOT_FOUND,
+                send_body=send_body,
+            )
+            return
+        try:
+            size = image.stat().st_size
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "image/png")
+            self.send_header("Content-Length", str(size))
+            self.send_header("Cache-Control", "private, max-age=3600")
+            self.end_headers()
+            if send_body:
+                with image.open("rb") as source_file:
+                    shutil.copyfileobj(source_file, self.wfile, COPY_CHUNK_SIZE)
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass
+
     def _copy_range(self, source: BinaryIO, start: int, length: int) -> None:
         source.seek(start)
         remaining = length
@@ -909,6 +1179,7 @@ def main() -> None:
     if export_root:
         (export_root / "clips").mkdir(parents=True, exist_ok=True)
         (export_root / "screenshots").mkdir(parents=True, exist_ok=True)
+        (export_root / "thumbnails").mkdir(parents=True, exist_ok=True)
     probe = (
         None
         if args.no_validate
@@ -922,6 +1193,11 @@ def main() -> None:
         probe=probe,
         export_root=export_root,
         jobs=ExportJobs(args.ffmpeg, export_root, probe) if export_root else None,
+        thumbnailer=(
+            ThumbnailCache(args.ffmpeg, export_root / "thumbnails", probe)
+            if export_root
+            else None
+        ),
     )
     server = ThreadingHTTPServer((args.host, args.port), make_handler(settings))
     server.daemon_threads = True

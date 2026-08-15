@@ -120,14 +120,25 @@ class ServerTests(unittest.TestCase):
         (self.root / "ignore.txt").write_text("nope")
         self.exports = Path(self.export_tempdir.name).resolve()
         (self.exports / "screenshots").mkdir(parents=True)
+        (self.exports / "screenshots" / "Saved Screenshot.png").write_bytes(
+            b"\x89PNG\r\n\x1a\n" + b"saved-image"
+        )
         (self.exports / "clips").mkdir(parents=True)
         (self.exports / "clips" / "Saved Clip.mp4").write_bytes(b"abcdefghij")
+        thumbnail = self.exports / "thumbnail.jpg"
+        thumbnail.write_bytes(b"\xff\xd8test-thumbnail\xff\xd9")
+
+        class StaticThumbnailer:
+            def get(self, _source: Path) -> Path:
+                return thumbnail
+
         settings = Settings(
             root=self.root,
             token="test-token",
             public_base_url=None,
             extensions=frozenset({".mkv"}),
             export_root=self.exports,
+            thumbnailer=StaticThumbnailer(),
         )
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(settings))
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
@@ -149,6 +160,11 @@ class ServerTests(unittest.TestCase):
             body = json.load(response)
         self.assertEqual([item["path"] for item in body["files"]], ["Movie.mkv"])
         self.assertTrue(body["files"][0]["url"].endswith("Movie.mkv?token=test-token"))
+        self.assertTrue(
+            body["files"][0]["thumbnail_url"].endswith(
+                "/thumbnail/media/Movie.mkv?token=test-token"
+            )
+        )
 
         media_request = Request(
             body["files"][0]["url"], headers={"Range": "bytes=2-5"}
@@ -157,6 +173,11 @@ class ServerTests(unittest.TestCase):
             self.assertEqual(response.status, 206)
             self.assertEqual(response.headers["Content-Range"], "bytes 2-5/10")
             self.assertEqual(response.read(), b"2345")
+
+        thumbnail_request = Request(body["files"][0]["thumbnail_url"])
+        with urlopen(thumbnail_request) as response:
+            self.assertEqual(response.headers["Content-Type"], "image/jpeg")
+            self.assertEqual(response.read(), b"\xff\xd8test-thumbnail\xff\xd9")
 
     def test_requires_token(self) -> None:
         with self.assertRaises(HTTPError) as raised:
@@ -204,6 +225,23 @@ class ServerTests(unittest.TestCase):
         output = Path(body["server_path"])
         self.assertEqual(output.parent, self.exports / "screenshots")
         self.assertEqual(output.read_bytes(), png)
+
+    def test_catalogs_and_serves_screenshots(self) -> None:
+        request = Request(
+            f"{self.base_url}/api/screenshots",
+            headers={"Authorization": "Bearer test-token"},
+        )
+        with urlopen(request) as response:
+            body = json.load(response)
+        self.assertEqual(body["files"][0]["title"], "Saved Screenshot")
+        self.assertTrue(
+            body["files"][0]["url"].endswith(
+                "/screenshots/Saved%20Screenshot.png?token=test-token"
+            )
+        )
+        with urlopen(body["files"][0]["url"]) as response:
+            self.assertEqual(response.headers["Content-Type"], "image/png")
+            self.assertEqual(response.read(), b"\x89PNG\r\n\x1a\n" + b"saved-image")
 
 
 if __name__ == "__main__":
