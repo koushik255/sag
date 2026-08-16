@@ -62,14 +62,14 @@ h1, h2, p { margin: 0; }
 .player-view, .screenshot-view { position: fixed; z-index: 20; inset: 0; background: #000; }
 .stage { position: relative; width: 100%; height: 100%; overflow: hidden; background: #000; }
 #video { width: 100%; height: 100%; object-fit: contain; }
-.player-topbar, .screenshot-toolbar { position: absolute; z-index: 4; top: 0; right: 0; left: 0; display: flex; align-items: center; gap: 12px; padding: 20px 24px; background: rgba(0, 0, 0, .72); opacity: 0; }
-.stage:hover .player-topbar, .stage:focus-within .player-topbar { opacity: 1; }
+.player-topbar, .screenshot-toolbar { position: absolute; z-index: 4; top: 0; right: 0; left: 0; display: flex; align-items: center; gap: 12px; padding: 20px 24px; background: rgba(0, 0, 0, .72); opacity: 0; pointer-events: none; transition: opacity 180ms ease; }
 .icon-button { width: 28px; height: 28px; color: #ddd; font-size: 18px; }
 .player-heading h2 { color: #ddd; font-size: 12px; font-weight: 500; }
 .player-heading p { margin-top: 3px; color: #777; font-size: 9px; }
 .loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #888; font-size: 11px; }
-.controls { position: absolute; z-index: 5; right: 0; bottom: 0; left: 0; padding: 14px 24px 18px; background: rgba(0, 0, 0, .78); opacity: 0; }
-.stage:hover .controls, .controls:focus-within { opacity: 1; }
+.controls { position: absolute; z-index: 5; right: 0; bottom: 0; left: 0; padding: 14px 24px 18px; background: rgba(0, 0, 0, .78); opacity: 0; pointer-events: none; transition: opacity 180ms ease; }
+.stage.controls-visible .player-topbar, .stage.controls-visible .controls { opacity: 1; pointer-events: auto; }
+.stage:not(.controls-visible) { cursor: none; }
 .timeline { display: block; width: 100%; margin-bottom: 9px; }
 .control-row { display: flex; align-items: center; gap: 9px; min-height: 28px; }
 .control-button { min-width: 28px; height: 28px; color: #ccc; font-size: 10px; }

@@ -223,7 +223,7 @@ function openPlayer(item) {
 }
 
 async function closePlayer() {
-  if (document.fullscreenElement) await document.exitFullscreen();
+  await player.exitFullscreen();
   await player.dispose();
   elements.playerView.hidden = true;
   activeItem = null;
@@ -384,7 +384,9 @@ window.addEventListener('keydown', (event) => {
   if (event.repeat && ['KeyS', 'Digit5', 'Numpad5'].includes(event.code)) return;
 
   if (event.code === 'Escape') {
-    if (!document.fullscreenElement) void closePlayer();
+    void (async () => {
+      if (!(await player.exitFullscreen())) await closePlayer();
+    })();
     return;
   }
   if (event.code === 'Space' || event.code === 'KeyK') player.toggle();

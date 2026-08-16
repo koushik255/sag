@@ -348,6 +348,16 @@ function registerIpc() {
   ipcMain.handle('export:clip', (_event, request) => createClip(request));
   ipcMain.handle('export:screenshot', (_event, request) => uploadScreenshot(request));
   ipcMain.handle('subtitle:pick', () => pickSubtitle());
+  ipcMain.handle('window:toggle-fullscreen', (event) => {
+    const window = BrowserWindow.fromWebContents(event.sender);
+    if (!window) throw new Error('The player window is unavailable.');
+    const fullscreen = !window.isFullScreen();
+    window.setFullScreen(fullscreen);
+    return fullscreen;
+  });
+  ipcMain.handle('window:is-fullscreen', (event) => {
+    return BrowserWindow.fromWebContents(event.sender)?.isFullScreen() ?? false;
+  });
 }
 
 function createWindow() {

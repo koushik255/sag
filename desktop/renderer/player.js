@@ -44,15 +44,20 @@ export class MediaPlayer {
     this.volumeValue = 0.7;
     this.subtitleCues = [];
     this.subtitleLastUpdate = -Infinity;
+    this.controlsHideTimer = null;
 
     this.playButton.addEventListener('click', () => this.toggle());
-    this.timeline.addEventListener('pointerdown', () => { this.dragging = true; });
+    this.timeline.addEventListener('pointerdown', () => {
+      this.dragging = true;
+      this.showControls();
+    });
     this.timeline.addEventListener('input', () => {
       this.currentTime.textContent = formatTime(Number(this.timeline.value));
     });
     this.timeline.addEventListener('change', () => {
       this.dragging = false;
       void this.seek(Number(this.timeline.value));
+      this.scheduleControlsHide();
     });
     this.volume.addEventListener('input', () => {
       this.volumeValue = Number(this.volume.value);
@@ -63,11 +68,13 @@ export class MediaPlayer {
       this.volume.value = String(this.volumeValue);
       this.updateVolume();
     });
-    this.fullscreen.addEventListener('click', () => {
-      void this.toggleFullscreen();
-    });
+    this.fullscreen.addEventListener('click', () => { void this.toggleFullscreen(); });
     this.canvas.addEventListener('click', () => this.toggle());
     this.stage.addEventListener('dblclick', () => { void this.toggleFullscreen(); });
+    this.stage.addEventListener('pointermove', () => this.showControlsTemporarily());
+    this.stage.addEventListener('pointerleave', () => this.scheduleControlsHide(400));
+    this.controls.addEventListener('pointerenter', () => this.showControls());
+    this.controls.addEventListener('pointerleave', () => this.scheduleControlsHide());
     this.controls.addEventListener('click', (event) => event.stopPropagation());
     this.controls.addEventListener('dblclick', (event) => event.stopPropagation());
     requestAnimationFrame(() => this.render());
@@ -82,6 +89,7 @@ export class MediaPlayer {
     this.warning.hidden = true;
     this.playButton.classList.remove('playing');
     this.playButton.setAttribute('aria-label', 'Play');
+    this.showControls();
 
     try {
       if (!Number.isSafeInteger(Number(item.size)) || Number(item.size) <= 0) {
@@ -205,6 +213,27 @@ export class MediaPlayer {
     requestAnimationFrame(() => this.render());
   }
 
+  showControls() {
+    clearTimeout(this.controlsHideTimer);
+    this.controlsHideTimer = null;
+    this.stage.classList.add('controls-visible');
+  }
+
+  showControlsTemporarily() {
+    this.showControls();
+    this.scheduleControlsHide();
+  }
+
+  scheduleControlsHide(delay = 1800) {
+    clearTimeout(this.controlsHideTimer);
+    this.controlsHideTimer = null;
+    if (!this.playing || this.dragging) return;
+    this.controlsHideTimer = setTimeout(() => {
+      this.stage.classList.remove('controls-visible');
+      this.controlsHideTimer = null;
+    }, delay);
+  }
+
   setSubtitles(cues) {
     this.subtitleCues = cues;
     this.subtitleLastUpdate = -Infinity;
@@ -279,6 +308,7 @@ export class MediaPlayer {
     }
     this.playButton.classList.add('playing');
     this.playButton.setAttribute('aria-label', 'Pause');
+    this.scheduleControlsHide();
   }
 
   pause() {
@@ -291,6 +321,7 @@ export class MediaPlayer {
     this.queuedAudio.clear();
     this.playButton.classList.remove('playing');
     this.playButton.setAttribute('aria-label', 'Play');
+    this.showControls();
   }
 
   toggle() {
@@ -314,11 +345,15 @@ export class MediaPlayer {
   }
 
   async toggleFullscreen() {
-    if (document.fullscreenElement) {
-      await document.exitFullscreen();
-    } else {
-      await this.stage.requestFullscreen();
-    }
+    await window.stopAndGo.toggleFullscreen();
+    this.showControlsTemporarily();
+  }
+
+  async exitFullscreen() {
+    if (!(await window.stopAndGo.isFullscreen())) return false;
+    await window.stopAndGo.toggleFullscreen();
+    this.showControls();
+    return true;
   }
 
   capturePng() {
@@ -344,6 +379,8 @@ export class MediaPlayer {
     this.pause();
     this.loaded = false;
     this.clearSubtitles();
+    clearTimeout(this.controlsHideTimer);
+    this.controlsHideTimer = null;
     this.asyncId++;
     await this.videoIterator?.return();
     await this.audioIterator?.return();

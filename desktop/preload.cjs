@@ -11,4 +11,6 @@ contextBridge.exposeInMainWorld('stopAndGo', {
   createClip: (request) => ipcRenderer.invoke('export:clip', request),
   uploadScreenshot: (request) => ipcRenderer.invoke('export:screenshot', request),
   pickSubtitle: () => ipcRenderer.invoke('subtitle:pick'),
+  toggleFullscreen: () => ipcRenderer.invoke('window:toggle-fullscreen'),
+  isFullscreen: () => ipcRenderer.invoke('window:is-fullscreen'),
 });
