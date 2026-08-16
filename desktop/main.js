@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, safeStorage } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, powerSaveBlocker, safeStorage } from 'electron';
 import path from 'node:path';
 import { readFile, stat, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -10,11 +10,24 @@ const allowedMoviePaths = new Set();
 const allowedScreenshotUrls = new Set();
 
 let mainWindow;
+let fullscreenSleepBlocker = null;
 let settings = {
   serverUrl: '',
   encryptedToken: '',
   sessionToken: '',
 };
+
+function preventFullscreenSleep() {
+  if (fullscreenSleepBlocker !== null && powerSaveBlocker.isStarted(fullscreenSleepBlocker)) return;
+  fullscreenSleepBlocker = powerSaveBlocker.start('prevent-display-sleep');
+}
+
+function restoreNormalSleep() {
+  if (fullscreenSleepBlocker !== null && powerSaveBlocker.isStarted(fullscreenSleepBlocker)) {
+    powerSaveBlocker.stop(fullscreenSleepBlocker);
+  }
+  fullscreenSleepBlocker = null;
+}
 
 function settingsPath() {
   return path.join(app.getPath('userData'), 'settings.json');
@@ -385,6 +398,12 @@ function createWindow() {
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   mainWindow.webContents.session.setPermissionRequestHandler((_webContents, _permission, callback) => {
     callback(false);
+  });
+  mainWindow.on('enter-full-screen', preventFullscreenSleep);
+  mainWindow.on('leave-full-screen', restoreNormalSleep);
+  mainWindow.on('closed', () => {
+    restoreNormalSleep();
+    mainWindow = null;
   });
 }
 
