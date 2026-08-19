@@ -185,6 +185,26 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(raised.exception.code, 401)
         raised.exception.close()
 
+    def test_serves_web_gallery_without_exposing_media(self) -> None:
+        with urlopen(f"{self.base_url}/") as response:
+            page = response.read().decode("utf-8")
+            self.assertEqual(
+                response.headers["Content-Type"], "text/html; charset=utf-8"
+            )
+            self.assertIn(
+                "frame-ancestors 'none'",
+                response.headers["Content-Security-Policy"],
+            )
+        self.assertIn('data-library="clips"', page)
+        self.assertIn('data-library="screenshots"', page)
+
+        with urlopen(f"{self.base_url}/static/app.js") as response:
+            script = response.read().decode("utf-8")
+            self.assertEqual(
+                response.headers["Content-Type"], "text/javascript; charset=utf-8"
+            )
+        self.assertIn("/api/clips", script)
+
     def test_catalogs_and_streams_completed_clips(self) -> None:
         request = Request(
             f"{self.base_url}/api/clips",

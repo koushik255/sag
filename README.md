@@ -1,14 +1,11 @@
 # StopAndGo
 
-StopAndGo is a small mpv extension for browsing and playing videos stored on another machine. It has two parts:
+StopAndGo is a small mpv extension for browsing and playing videos stored on another machine. It has four pieces:
 
 - a dependency-free Python server that scans a directory and streams files with HTTP byte-range support;
-- an mpv Lua script that opens a remote library picker with `Ctrl+b`.
-- export helpers that create 15-second clips and screenshots on the server.
-
-There is also an experimental vanilla Electron desktop player in `desktop/`.
-It uses Mediabunny/WebCodecs directly so codec support must be validated on each
-computer; the existing mpv clients remain the reliable fallback.
+- an mpv Lua script that opens a remote library picker with `Ctrl+b`;
+- export helpers that create 15-second clips and screenshots on the server;
+- a small web gallery for viewing clips and screenshots from any tailnet device.
 
 Byte ranges matter: unlike `ssh server 'cat movie.mkv' | mpv -`, mpv can seek without reading the whole file up to the new position.
 
@@ -76,6 +73,20 @@ tailscale serve status
 Use the HTTPS URL printed by `tailscale serve status` as `--public-base-url` and in the mpv config. Tailscale Serve remains limited to your tailnet and its access rules; do not use Tailscale Funnel for a private movie library.
 
 An extra StopAndGo token is normally unnecessary in this layout because the backend listens only on localhost and Tailscale controls access. If the tailnet has other users who should not see this service, restrict it with tailnet grants.
+
+### Web gallery
+
+Open the Tailscale Serve HTTPS URL in a browser to view completed clips,
+screenshots, and the movie catalog. Clips are H.264/AAC MP4 files and should
+play in current browsers. Some original movie containers and codecs will not;
+use the MPV Library for movie playback when the browser reports that it cannot
+play a file.
+
+The gallery is served by the same dependency-free Python process as the API, so
+there is no second web server to install. If `STOPANDGO_TOKEN` is configured, the
+gallery asks for it and retains it only for the current browser tab. With a
+localhost backend behind Tailscale Serve, the token can normally be omitted and
+tailnet grants can control which users or devices have access.
 
 ### Private access without Tailscale
 
@@ -155,30 +166,10 @@ The server does not change. On Windows 10 or 11, install Tailscale and sign in t
 
 It prompts for the server URL and securely prompts for the StopAndGo application token. You can also pass `-ServerUrl "http://your-server:8765"` and `-MpvPath "C:\path\to\mpv.exe"`. The installer uses `%APPDATA%\mpv` unless a `portable_config` directory exists beside `mpv.exe`, registers the original mpv in Explorer's **Open with** menu, and creates a separate searchable **MPV Library** Start-menu shortcut. The keys and server-side export behavior are the same as on macOS.
 
-## Experimental Electron player
-
-The desktop prototype intentionally uses plain HTML, CSS, and JavaScript. It
-keeps the server token in Electron's main process, encrypts it with the operating
-system credential store when available, and permits the renderer to request only
-media URLs returned by the current catalog.
-
-```sh
-cd desktop
-npm install
-npm run dev
-```
-
-Use the same base server URL and token as the mpv client. `npm run start` builds
-the renderer and starts Electron without Vite's development server. The player
-supports thumbnail libraries for Movies, Clips, and Screenshots, plus search,
-play/pause, seeking, volume, fullscreen, and server exports. While watching a
-movie, press `5` to queue the previous 15 seconds as a server clip, `s` to save
-the current decoded frame as a server screenshot, or `f` to toggle fullscreen.
-It reports WebCodecs compatibility errors for tracks the current computer cannot
-decode. Packaging, subtitles, and playback resume are later milestones.
-
 ## API
 
+- `GET /` — tailnet web gallery
+- `GET /static/app.js` and `/static/styles.css` — gallery assets
 - `GET /healthz` — unauthenticated health check
 - `GET /api/files` — JSON catalog
 - `GET /api/clips` — JSON catalog of completed server clips, newest first

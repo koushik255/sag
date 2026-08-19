@@ -48,6 +48,7 @@ RANGE_RE = re.compile(r"^bytes=(\d*)-(\d*)$")
 COPY_CHUNK_SIZE = 1024 * 1024
 ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 PROJECT_ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
+WEB_ROOT = Path(__file__).resolve().parent / "web"
 
 
 def load_env_file(path: Path) -> None:
@@ -714,6 +715,15 @@ class MediaHandler(BaseHTTPRequestHandler):
         if parsed.path == "/healthz":
             self._send_json({"ok": True}, send_body=send_body)
             return
+        if parsed.path in {"/", "/index.html"}:
+            self._send_web_asset("index.html", send_body)
+            return
+        if parsed.path == "/static/app.js":
+            self._send_web_asset("app.js", send_body)
+            return
+        if parsed.path == "/static/styles.css":
+            self._send_web_asset("styles.css", send_body)
+            return
         if not self._authorized(parsed.query):
             self._send_json(
                 {"error": "unauthorized"},
@@ -926,6 +936,48 @@ class MediaHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        if send_body:
+            self.wfile.write(body)
+
+    def _send_web_asset(self, name: str, send_body: bool) -> None:
+        content_types = {
+            "index.html": "text/html; charset=utf-8",
+            "app.js": "text/javascript; charset=utf-8",
+            "styles.css": "text/css; charset=utf-8",
+        }
+        if name not in content_types:
+            self._send_json(
+                {"error": "not found"},
+                status=HTTPStatus.NOT_FOUND,
+                send_body=send_body,
+            )
+            return
+        try:
+            body = (WEB_ROOT / name).read_bytes()
+        except OSError:
+            self._send_json(
+                {"error": "web gallery unavailable"},
+                status=HTTPStatus.INTERNAL_SERVER_ERROR,
+                send_body=send_body,
+            )
+            return
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", content_types[name])
+        self.send_header("Content-Length", str(len(body)))
+        cache_control = (
+            "no-store" if name == "index.html" else "private, max-age=3600"
+        )
+        self.send_header("Cache-Control", cache_control)
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header(
+            "Content-Security-Policy",
+            "default-src 'self'; script-src 'self'; style-src 'self'; "
+            "img-src 'self' data: http: https:; media-src 'self' http: https:; "
+            "connect-src 'self'; object-src 'none'; base-uri 'none'; "
+            "frame-ancestors 'none'",
+        )
         self.end_headers()
         if send_body:
             self.wfile.write(body)

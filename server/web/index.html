@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Media</title>
+    <link rel="stylesheet" href="/static/styles.css">
+  </head>
+  <body>
+    <header>
+      <nav aria-label="Libraries">
+        <button class="tab active" data-library="clips">Clips</button>
+        <button class="tab" data-library="screenshots">Screenshots</button>
+        <button class="tab" data-library="movies">Movies</button>
+      </nav>
+      <div class="tools">
+        <input id="search" type="search" placeholder="Search" aria-label="Search">
+        <button id="refresh" aria-label="Refresh" title="Refresh">↻</button>
+      </div>
+    </header>
+
+    <main>
+      <div class="heading">
+        <h1 id="title">Clips</h1>
+        <span id="count"></span>
+      </div>
+      <section id="login" hidden>
+        <form id="login-form">
+          <label for="token">Server token</label>
+          <input id="token" type="password" autocomplete="current-password">
+          <button type="submit">Connect</button>
+        </form>
+      </section>
+      <p id="status">Loading…</p>
+      <section id="grid" class="grid" aria-live="polite"></section>
+    </main>
+
+    <dialog id="viewer">
+      <div class="viewer-bar">
+        <span id="viewer-title"></span>
+        <div>
+          <a id="original" target="_blank" rel="noreferrer">open file</a>
+          <button id="close-viewer" aria-label="Close">×</button>
+        </div>
+      </div>
+      <div id="viewer-body" class="viewer-body"></div>
+      <p id="viewer-error" hidden></p>
+    </dialog>
+
+    <script src="/static/app.js" defer></script>
+  </body>
+</html>
