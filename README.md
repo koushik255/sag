@@ -76,11 +76,10 @@ An extra StopAndGo token is normally unnecessary in this layout because the back
 
 ### Web gallery
 
-Open the Tailscale Serve HTTPS URL in a browser to view completed clips,
-screenshots, and the movie catalog. Clips are H.264/AAC MP4 files and should
-play in current browsers. Some original movie containers and codecs will not;
-use the MPV Library for movie playback when the browser reports that it cannot
-play a file.
+Open the Tailscale Serve HTTPS URL in a browser to view completed clips and
+screenshots. Clips are H.264/AAC MP4 files and should play in current browsers.
+The site deliberately does not expose the movie catalog; use the MPV Library
+for browsing and playing movies.
 
 The gallery is served by the same dependency-free Python process as the API, so
 there is no second web server to install. If `STOPANDGO_TOKEN` is configured, the
@@ -169,7 +168,7 @@ It prompts for the server URL and securely prompts for the StopAndGo application
 ## API
 
 - `GET /` — tailnet web gallery
-- `GET /static/app.js` and `/static/styles.css` — gallery assets
+- `GET /static/app.js` — gallery script
 - `GET /healthz` — unauthenticated health check
 - `GET /api/files` — JSON catalog
 - `GET /api/clips` — JSON catalog of completed server clips, newest first

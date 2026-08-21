@@ -197,6 +197,8 @@ class ServerTests(unittest.TestCase):
             )
         self.assertIn('data-library="clips"', page)
         self.assertIn('data-library="screenshots"', page)
+        self.assertNotIn('data-library="movies"', page)
+        self.assertNotIn("stylesheet", page)
 
         with urlopen(f"{self.base_url}/static/app.js") as response:
             script = response.read().decode("utf-8")
@@ -204,6 +206,8 @@ class ServerTests(unittest.TestCase):
                 response.headers["Content-Type"], "text/javascript; charset=utf-8"
             )
         self.assertIn("/api/clips", script)
+        self.assertIn("/api/screenshots", script)
+        self.assertNotIn("/api/files", script)
 
     def test_catalogs_and_streams_completed_clips(self) -> None:
         request = Request(

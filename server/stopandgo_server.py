@@ -721,9 +721,6 @@ class MediaHandler(BaseHTTPRequestHandler):
         if parsed.path == "/static/app.js":
             self._send_web_asset("app.js", send_body)
             return
-        if parsed.path == "/static/styles.css":
-            self._send_web_asset("styles.css", send_body)
-            return
         if not self._authorized(parsed.query):
             self._send_json(
                 {"error": "unauthorized"},
@@ -944,7 +941,6 @@ class MediaHandler(BaseHTTPRequestHandler):
         content_types = {
             "index.html": "text/html; charset=utf-8",
             "app.js": "text/javascript; charset=utf-8",
-            "styles.css": "text/css; charset=utf-8",
         }
         if name not in content_types:
             self._send_json(
@@ -973,7 +969,7 @@ class MediaHandler(BaseHTTPRequestHandler):
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header(
             "Content-Security-Policy",
-            "default-src 'self'; script-src 'self'; style-src 'self'; "
+            "default-src 'self'; script-src 'self'; style-src 'none'; "
             "img-src 'self' data: http: https:; media-src 'self' http: https:; "
             "connect-src 'self'; object-src 'none'; base-uri 'none'; "
             "frame-ancestors 'none'",
